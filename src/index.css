@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .grid-cols-10 {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+  .grid-rows-6 {
+    grid-template-rows: repeat(6, minmax(0, 1fr));
+  }
+}
