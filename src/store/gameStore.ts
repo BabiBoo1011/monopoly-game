@@ -1,19 +1,35 @@
 import { create } from 'zustand';
-import { GameState, TurnHistoryEntry } from '../types/game';
+import { GameState, GameScreen, Player, AvatarType, TurnHistoryEntry } from '../types/game';
 import { boardTiles } from '../data/boardTiles';
 import {
   applyCupChange,
   getNextPosition,
   resolveTileEffect,
+  getStartPosForPlayer,
+  getPlayerStartPosition,
+  PLAYER_COLORS,
 } from '../logic/gameLogic';
 
 interface GameActions {
-  setPlayerName: (name: string) => void;
-  startGame: (turns: number) => void;
+  goToSetup: () => void;
+  goBackFromSetup: () => void;
+  setPlayerCount: (count: number) => void;
+  setTurnsPerPlayer: (turns: number) => void;
+  setCustomTurnsInput: (input: string) => void;
+  goToPlayerSetup: () => void;
+  goBackFromPlayerSetup: () => void;
+  updatePlayerName: (playerId: string, name: string) => void;
+  updatePlayerAvatar: (playerId: string, avatar: AvatarType) => void;
+  startMultiplayerGame: () => void;
   rollDice: () => void;
-  resetGame: () => void;
-  replayGame: () => void;
+  openExitModal: () => void;
+  openReplayModal: () => void;
+  closeModal: () => void;
+  confirmExit: () => void;
+  confirmReplay: () => void;
   exitGame: () => void;
+  replayGame: () => void;
+  goHome: () => void;
   toggleSound: () => void;
   toggleMusic: () => void;
   showTileMessage: (msg: string) => void;
@@ -135,31 +151,152 @@ function stopBgmLoop() {
   }
 }
 
+function createDefaultPlayers(count: number, turns: number): Player[] {
+  const players: Player[] = [];
+  for (let i = 0; i < count; i++) {
+    players.push({
+      id: `player-${i + 1}`,
+      name: `Player ${i + 1}`,
+      avatar: i % 2 === 0 ? 'superhero' : 'princess',
+      color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+      position: getStartPosForPlayer(i),
+      cups: 0,
+      remainingTurns: turns,
+      totalTurns: turns,
+    });
+  }
+  return players;
+}
+
+function findNextActivePlayerIndex(players: Player[], startIndex: number): number {
+  const n = players.length;
+  for (let i = 0; i < n; i++) {
+    const candidate = (startIndex + i) % n;
+    if (players[candidate].remainingTurns > 0) {
+      return candidate;
+    }
+  }
+  return -1;
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
-  gameStatus: 'setup',
-  playerName: 'Player',
+  screen: 'home',
+  playerCount: 2,
+  turnsPerPlayer: 10,
+  customTurnsInput: '10',
+  setupError: null,
+  players: [],
+  currentPlayerIndex: 0,
   tileMessage: null,
-  totalTurns: 15,
-  remainingTurns: 15,
-  currentTurn: 0,
-  currentPosition: 0,
-  cups: 0,
   diceValue: null,
   isRolling: false,
   isMoving: false,
   history: [],
   soundEnabled: true,
   musicEnabled: true,
+  activeModal: null,
 
-  setPlayerName: (name: string) => {
-    const trimmed = name.trim();
-    set({ playerName: trimmed.length > 0 ? trimmed : 'Player' });
+  goToSetup: () => {
+    set({ screen: 'setup', setupError: null });
+  },
+
+  goBackFromSetup: () => {
+    set({ screen: 'home', setupError: null });
+  },
+
+  setPlayerCount: (count: number) => {
+    const clamped = Math.max(1, Math.min(4, count));
+    set({ playerCount: clamped });
+  },
+
+  setTurnsPerPlayer: (turns: number) => {
+    set({ turnsPerPlayer: turns, customTurnsInput: String(turns), setupError: null });
+  },
+
+  setCustomTurnsInput: (input: string) => {
+    set({ customTurnsInput: input });
+    const trimmed = input.trim();
+    if (!trimmed || !/^\d+$/.test(trimmed)) {
+      set({ setupError: 'Please enter 1 to 100.' });
+      return;
+    }
+    const val = parseInt(trimmed, 10);
+    if (val < 1 || val > 100) {
+      set({ setupError: 'Please enter 1 to 100.' });
+    } else {
+      set({ turnsPerPlayer: val, setupError: null });
+    }
+  },
+
+  goToPlayerSetup: () => {
+    const { playerCount, turnsPerPlayer, customTurnsInput, players } = get();
+
+    const trimmed = customTurnsInput.trim();
+    if (!trimmed || !/^\d+$/.test(trimmed)) {
+      set({ setupError: 'Please enter 1 to 100.' });
+      return;
+    }
+    const val = parseInt(trimmed, 10);
+    if (val < 1 || val > 100) {
+      set({ setupError: 'Please enter 1 to 100.' });
+      return;
+    }
+
+    const updated = createDefaultPlayers(playerCount, val);
+    for (let i = 0; i < playerCount; i++) {
+      if (players[i]) {
+        if (players[i].name && players[i].name !== `Player ${i + 1}`) {
+          updated[i].name = players[i].name;
+        }
+        updated[i].avatar = players[i].avatar;
+      }
+    }
+    set({ players: updated, turnsPerPlayer: val, setupError: null, screen: 'player_setup' });
+  },
+
+  goBackFromPlayerSetup: () => {
+    set({ screen: 'setup', setupError: null });
+  },
+
+  updatePlayerName: (playerId: string, name: string) => {
+    set((state) => ({
+      players: state.players.map((p) => (p.id === playerId ? { ...p, name: name } : p)),
+    }));
+  },
+
+  updatePlayerAvatar: (playerId: string, avatar: AvatarType) => {
+    set((state) => ({
+      players: state.players.map((p) => (p.id === playerId ? { ...p, avatar: avatar } : p)),
+    }));
+  },
+
+  startMultiplayerGame: () => {
+    const { players, turnsPerPlayer, musicEnabled } = get();
+    const prepared = players.map((p, idx) => ({
+      ...p,
+      name: p.name.trim().length > 0 ? p.name.trim() : `Player ${idx + 1}`,
+      position: getStartPosForPlayer(idx),
+      cups: 0,
+      remainingTurns: turnsPerPlayer,
+      totalTurns: turnsPerPlayer,
+    }));
+
+    set({
+      players: prepared,
+      currentPlayerIndex: 0,
+      screen: 'playing',
+      diceValue: null,
+      isRolling: false,
+      isMoving: false,
+      history: [],
+      tileMessage: null,
+      activeModal: null,
+    });
+    startBgmLoop(musicEnabled);
   },
 
   showTileMessage: (msg: string) => {
-    if (tileMsgTimer !== null) {
-      clearTimeout(tileMsgTimer);
-    }
+    if (tileMsgTimer !== null) clearTimeout(tileMsgTimer);
     set({ tileMessage: msg });
     tileMsgTimer = window.setTimeout(() => {
       set({ tileMessage: null });
@@ -175,69 +312,70 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ tileMessage: null });
   },
 
-  startGame: (turns: number) => {
-    set({
-      gameStatus: 'playing',
-      totalTurns: turns,
-      remainingTurns: turns,
-      currentTurn: 0,
-      currentPosition: 0,
-      cups: 0,
-      diceValue: null,
-      isRolling: false,
-      isMoving: false,
-      history: [],
-      tileMessage: null,
-    });
-    startBgmLoop(get().musicEnabled);
+  openExitModal: () => {
+    set({ activeModal: 'exit' });
   },
 
-  replayGame: () => {
-    const { totalTurns, musicEnabled } = get();
+  openReplayModal: () => {
+    set({ activeModal: 'replay' });
+  },
+
+  closeModal: () => {
+    set({ activeModal: null });
+  },
+
+  confirmExit: () => {
+    stopBgmLoop();
     if (tileMsgTimer !== null) clearTimeout(tileMsgTimer);
     set({
-      gameStatus: 'playing',
-      remainingTurns: totalTurns,
-      currentTurn: 0,
-      currentPosition: 0,
+      screen: 'home',
+      activeModal: null,
+      tileMessage: null,
+    });
+  },
+
+  confirmReplay: () => {
+    const { players, turnsPerPlayer, musicEnabled } = get();
+    if (tileMsgTimer !== null) clearTimeout(tileMsgTimer);
+
+    const resetPlayers = players.map((p, idx) => ({
+      ...p,
+      position: getStartPosForPlayer(idx),
       cups: 0,
+      remainingTurns: turnsPerPlayer,
+      totalTurns: turnsPerPlayer,
+    }));
+
+    set({
+      players: resetPlayers,
+      currentPlayerIndex: 0,
+      screen: 'playing',
       diceValue: null,
       isRolling: false,
       isMoving: false,
       history: [],
       tileMessage: null,
+      activeModal: null,
     });
     startBgmLoop(musicEnabled);
   },
 
-  resetGame: () => {
+  goHome: () => {
     stopBgmLoop();
     if (tileMsgTimer !== null) clearTimeout(tileMsgTimer);
     set({
-      gameStatus: 'setup',
-      currentPosition: 0,
-      cups: 0,
-      diceValue: null,
-      isRolling: false,
-      isMoving: false,
-      history: [],
+      screen: 'home',
+      activeModal: null,
       tileMessage: null,
     });
   },
 
   exitGame: () => {
-    stopBgmLoop();
-    if (tileMsgTimer !== null) clearTimeout(tileMsgTimer);
-    set({
-      gameStatus: 'setup',
-      currentPosition: 0,
-      cups: 0,
-      diceValue: null,
-      isRolling: false,
-      isMoving: false,
-      history: [],
-      tileMessage: null,
-    });
+    get().confirmExit();
+  },
+
+  replayGame: () => {
+    get().confirmReplay();
   },
 
   toggleSound: () => {
@@ -247,14 +385,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   toggleMusic: () => {
     const nextState = !get().musicEnabled;
     set({ musicEnabled: nextState });
-    if (get().gameStatus !== 'setup') {
+    if (get().screen === 'playing') {
       startBgmLoop(nextState);
     }
   },
 
   rollDice: () => {
-    const { isRolling, isMoving, remainingTurns, soundEnabled } = get();
-    if (isRolling || isMoving || remainingTurns <= 0) return;
+    const { isRolling, isMoving, activeModal, players, currentPlayerIndex, soundEnabled } = get();
+    const curPlayer = players[currentPlayerIndex];
+
+    if (isRolling || isMoving || activeModal !== null || !curPlayer || curPlayer.remainingTurns <= 0) return;
 
     set({ isRolling: true });
     get().clearTileMessage();
@@ -265,43 +405,94 @@ export const useGameStore = create<GameStore>((set, get) => ({
     setTimeout(() => {
       clearInterval(interval);
       set({ diceValue: diceResult, isRolling: false, isMoving: true });
-      
+
       let stepsLeft = diceResult;
       const moveInterval = setInterval(() => {
-        const currentPos = get().currentPosition;
-        const nextPos = getNextPosition(currentPos, 1, 28);
-        set({ currentPosition: nextPos });
+        const activeState = get();
+        const activePlayer = activeState.players[activeState.currentPlayerIndex];
+        const nextPos = getNextPosition(activePlayer.position, 1, 28);
+
+        set((state) => ({
+          players: state.players.map((p, idx) =>
+            idx === state.currentPlayerIndex ? { ...p, position: nextPos } : p
+          ),
+        }));
+
         playSynthSound('step', get().soundEnabled);
         stepsLeft--;
 
         if (stepsLeft <= 0) {
           clearInterval(moveInterval);
           setTimeout(() => {
-            const firstLandedPos = get().currentPosition;
+            const finalState = get();
+            const pIdx = finalState.currentPlayerIndex;
+            const pObj = finalState.players[pIdx];
+            const firstLandedPos = pObj.position;
             const firstTile = boardTiles[firstLandedPos];
-            const currentCups = get().cups;
-            const firstEffect = resolveTileEffect(firstTile, currentCups, false);
 
-            let newCups = currentCups;
+            const firstEffect = resolveTileEffect(firstTile, pObj.name, false);
+
+            let newCups = pObj.cups;
             let finalPos = firstLandedPos;
             let combinedEffectDesc = firstEffect.effectDescription;
 
             if (firstEffect.cupsDelta !== 0) {
-              newCups = applyCupChange(currentCups, firstEffect.cupsDelta);
+              newCups = applyCupChange(pObj.cups, firstEffect.cupsDelta);
               playSynthSound(firstEffect.cupsDelta > 0 ? 'reward' : 'penalty', soundEnabled);
             }
 
             get().showTileMessage(firstEffect.effectDescription);
 
-            // Handle Chain Effect if first tile was a movement tile!
+            const completeTurn = (endPos: number, endCups: number, effectDesc: string, delta: number) => {
+              const latestState = get();
+              const activeP = latestState.players[pIdx];
+              const newRemainingTurns = activeP.remainingTurns - 1;
+
+              const logEntry: TurnHistoryEntry = {
+                turnNumber: latestState.history.length + 1,
+                playerId: activeP.id,
+                playerName: activeP.name,
+                diceValue: diceResult,
+                fromPosition: pObj.position,
+                toPosition: endPos,
+                effectDescription: effectDesc,
+                cupsDelta: delta,
+                totalCupsAfter: endCups,
+              };
+
+              const updatedPlayers = latestState.players.map((p, idx) =>
+                idx === pIdx
+                  ? { ...p, position: endPos, cups: endCups, remainingTurns: newRemainingTurns }
+                  : p
+              );
+
+              const nextIdx = findNextActivePlayerIndex(updatedPlayers, (pIdx + 1) % updatedPlayers.length);
+              const isAllFinished = nextIdx === -1 || updatedPlayers.every((p) => p.remainingTurns <= 0);
+
+              set({
+                players: updatedPlayers,
+                currentPlayerIndex: isAllFinished ? pIdx : nextIdx,
+                isMoving: false,
+                history: [logEntry, ...latestState.history],
+                screen: isAllFinished ? 'finished' : 'playing',
+              });
+
+              if (isAllFinished) playSynthSound('win', soundEnabled);
+            };
+
             if (firstEffect.newPosition !== undefined) {
               finalPos = firstEffect.newPosition;
               playSynthSound(finalPos === 0 ? 'penalty' : 'reward', soundEnabled);
 
               setTimeout(() => {
-                set({ currentPosition: finalPos });
+                set((state) => ({
+                  players: state.players.map((p, idx) =>
+                    idx === pIdx ? { ...p, position: finalPos } : p
+                  ),
+                }));
+
                 const secondTile = boardTiles[finalPos];
-                const secondEffect = resolveTileEffect(secondTile, newCups, true);
+                const secondEffect = resolveTileEffect(secondTile, pObj.name, true);
 
                 if (secondEffect.cupsDelta !== 0) {
                   newCups = applyCupChange(newCups, secondEffect.cupsDelta);
@@ -311,57 +502,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 combinedEffectDesc = `${firstEffect.effectDescription} -> ${secondEffect.effectDescription}`;
                 get().showTileMessage(secondEffect.effectDescription);
 
-                const turnNum = get().currentTurn + 1;
-                const newRemaining = get().remainingTurns - 1;
-
-                const logEntry: TurnHistoryEntry = {
-                  turnNumber: turnNum,
-                  diceValue: diceResult,
-                  fromPosition: firstLandedPos,
-                  toPosition: finalPos,
-                  effectDescription: combinedEffectDesc,
-                  cupsDelta: secondEffect.cupsDelta !== 0 ? secondEffect.cupsDelta : firstEffect.cupsDelta,
-                  totalCupsAfter: newCups,
-                };
-
-                set({
-                  currentPosition: finalPos,
-                  cups: newCups,
-                  currentTurn: turnNum,
-                  remainingTurns: newRemaining,
-                  isMoving: false,
-                  history: [logEntry, ...get().history],
-                  gameStatus: newRemaining <= 0 ? 'finished' : 'playing',
-                });
-
-                if (newRemaining <= 0) playSynthSound('win', soundEnabled);
+                completeTurn(
+                  finalPos,
+                  newCups,
+                  combinedEffectDesc,
+                  secondEffect.cupsDelta !== 0 ? secondEffect.cupsDelta : firstEffect.cupsDelta
+                );
               }, 600);
             } else {
-              // Standard single hop resolution
-              const turnNum = get().currentTurn + 1;
-              const newRemaining = get().remainingTurns - 1;
-
-              const logEntry: TurnHistoryEntry = {
-                turnNumber: turnNum,
-                diceValue: diceResult,
-                fromPosition: currentPos,
-                toPosition: finalPos,
-                effectDescription: firstEffect.effectDescription,
-                cupsDelta: firstEffect.cupsDelta,
-                totalCupsAfter: newCups,
-              };
-
-              set({
-                currentPosition: finalPos,
-                cups: newCups,
-                currentTurn: turnNum,
-                remainingTurns: newRemaining,
-                isMoving: false,
-                history: [logEntry, ...get().history],
-                gameStatus: newRemaining <= 0 ? 'finished' : 'playing',
-              });
-
-              if (newRemaining <= 0) playSynthSound('win', soundEnabled);
+              completeTurn(finalPos, newCups, firstEffect.effectDescription, firstEffect.cupsDelta);
             }
           }, 300);
         }

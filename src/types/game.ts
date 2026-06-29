@@ -20,6 +20,8 @@ export interface BoardTile {
 
 export interface TurnHistoryEntry {
   turnNumber: number;
+  playerId: string;
+  playerName: string;
   diceValue: number;
   fromPosition: number;
   toPosition: number;
@@ -28,21 +30,35 @@ export interface TurnHistoryEntry {
   totalCupsAfter: number;
 }
 
-export type GameStatus = 'setup' | 'playing' | 'finished';
+export type AvatarType = 'superhero' | 'princess';
+
+export interface Player {
+  id: string;
+  name: string;
+  avatar: AvatarType;
+  color: string;
+  position: number;
+  cups: number;
+  remainingTurns: number;
+  totalTurns: number;
+}
+
+export type GameScreen = 'home' | 'setup' | 'player_setup' | 'playing' | 'finished';
 
 export interface GameState {
-  gameStatus: GameStatus;
-  playerName: string;
+  screen: GameScreen;
+  playerCount: number;
+  turnsPerPlayer: number;
+  customTurnsInput: string;
+  setupError: string | null;
+  players: Player[];
+  currentPlayerIndex: number;
   tileMessage: string | null;
-  totalTurns: number;
-  remainingTurns: number;
-  currentTurn: number;
-  currentPosition: number;
-  cups: number;
   diceValue: number | null;
   isRolling: boolean;
   isMoving: boolean;
   history: TurnHistoryEntry[];
   soundEnabled: boolean;
   musicEnabled: boolean;
+  activeModal: 'exit' | 'replay' | null;
 }

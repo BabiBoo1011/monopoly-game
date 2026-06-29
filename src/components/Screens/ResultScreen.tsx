@@ -1,86 +1,90 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { getRankByCups } from '../../logic/gameLogic';
-import { RotateCcw, Home, Trophy, Award } from 'lucide-react';
-import { motion } from 'framer-motion';
-import confetti from 'canvas-confetti';
+import { calculateRankings } from '../../logic/gameLogic';
+import { Trophy, RotateCcw, Home, Shield, Crown } from 'lucide-react';
 
 export const ResultScreen: React.FC = () => {
-  const { cups, totalTurns, startGame, resetGame } = useGameStore();
-  const { rank, color, description } = getRankByCups(cups);
-
-  useEffect(() => {
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 60,
-        origin: { y: 0.6 },
-      });
-    } catch (e) {
-      console.warn('Confetti error:', e);
-    }
-  }, []);
+  const { players, replayGame, goHome } = useGameStore();
+  const { winnerTitle, rankings } = calculateRankings(players);
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.85, y: 30 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-sm bg-slate-900 border-4 border-slate-700 rounded-3xl p-6 shadow-2xl flex flex-col gap-5 text-center relative overflow-hidden"
-      >
-        {/* Header Badge */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-18 h-18 rounded-3xl bg-gradient-to-tr from-amber-400 to-yellow-300 border-4 border-white shadow-xl flex items-center justify-center text-4xl animate-bounce">
-            🏆
-          </div>
-          <h1 className="text-3xl font-black text-amber-400 uppercase tracking-wide">
-            Game Over
-          </h1>
+    <div className="min-h-screen bg-gradient-to-br from-purple-800 via-indigo-900 to-slate-900 flex flex-col items-center justify-center p-4 sm:p-6 text-white font-sans select-none">
+      <div className="max-w-2xl w-full bg-white/10 backdrop-blur-lg p-6 sm:p-10 rounded-3xl border-4 border-white/20 shadow-2xl flex flex-col items-center animate-fade-in">
+        <div className="bg-amber-400 p-5 rounded-full shadow-lg mb-4 text-slate-900 border-4 border-white animate-bounce">
+          <Trophy className="w-16 h-16" />
         </div>
 
-        {/* Score & Rank Card */}
-        <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 flex flex-col items-center gap-2">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Your Cups
-          </span>
+        <h1 className="text-4xl sm:text-5xl font-black tracking-wider text-yellow-300 drop-shadow mb-2">
+          Game Over
+        </h1>
 
-          <div className="flex items-center gap-2 text-4xl font-black text-amber-300">
-            <Trophy className="w-8 h-8 text-amber-400" />
-            <span>{cups}</span>
-          </div>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-8 bg-white/20 px-6 py-2 rounded-full border border-white/30 shadow-inner">
+          {winnerTitle}
+        </h2>
 
-          <div className="w-full border-t border-slate-700 my-1" />
+        {/* Ranking List */}
+        <div className="w-full flex flex-col gap-3 mb-8">
+          {rankings.map((player) => (
+            <div
+              key={player.id}
+              className="flex items-center justify-between p-4 rounded-2xl bg-white/90 text-slate-800 shadow-md border-l-8 transition-transform hover:scale-101"
+              style={{ borderColor: player.color }}
+            >
+              <div className="flex items-center gap-4">
+                <span className="font-black text-xl w-12 text-center py-1 bg-slate-200 rounded-lg text-slate-700">
+                  #{player.rank}
+                </span>
 
-          <div className="flex flex-col items-center gap-1 w-full">
-            <div className={`px-4 py-1.5 rounded-xl bg-gradient-to-r ${color} text-slate-950 font-black text-lg shadow flex items-center gap-1.5 uppercase tracking-wide`}>
-              <Award className="w-5 h-5" />
-              <span>{rank}</span>
+                <div
+                  className="p-2.5 rounded-xl text-white shadow-sm flex items-center justify-center"
+                  style={{ backgroundColor: player.color }}
+                >
+                  {player.avatar === 'superhero' ? (
+                    <Shield className="w-6 h-6" />
+                  ) : (
+                    <Crown className="w-6 h-6" />
+                  )}
+                </div>
+
+                <div className="flex flex-col">
+                  <span className="font-extrabold text-lg sm:text-xl text-slate-900 leading-tight">
+                    {player.name}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500 capitalize">
+                    {player.avatar}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-amber-100 px-4 py-2 rounded-xl border border-amber-300">
+                <Trophy className="w-6 h-6 text-amber-600 fill-amber-400" />
+                <span className="font-black text-xl text-amber-900">
+                  {player.cups} <span className="text-sm font-bold text-amber-700">cups</span>
+                </span>
+              </div>
             </div>
-            <p className="text-xs text-slate-300 font-medium leading-relaxed px-1 mt-1">
-              {description}
-            </p>
-          </div>
+          ))}
         </div>
 
-        {/* Replay / Home Action Buttons */}
-        <div className="flex flex-col gap-2.5">
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-4 w-full">
           <button
-            onClick={() => startGame(totalTurns)}
-            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 border-3 border-white text-slate-950 font-black text-lg shadow-lg flex items-center justify-center gap-2 hover:brightness-110 active:scale-95 transition-all"
+            onClick={replayGame}
+            className="py-4 px-6 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white font-black text-xl rounded-2xl shadow-xl border-b-4 border-emerald-700 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            <RotateCcw className="w-5 h-5" />
-            <span>Play Again</span>
+            <RotateCcw className="w-6 h-6" />
+            <span>Replay</span>
           </button>
 
           <button
-            onClick={resetGame}
-            className="w-full py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 text-slate-200 font-bold text-base shadow flex items-center justify-center gap-2 active:scale-95 transition-all"
+            onClick={goHome}
+            className="py-4 px-6 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-black text-xl rounded-2xl shadow-xl border-b-4 border-blue-800 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Home className="w-4 h-4 text-slate-400" />
+            <Home className="w-6 h-6" />
             <span>Home</span>
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };

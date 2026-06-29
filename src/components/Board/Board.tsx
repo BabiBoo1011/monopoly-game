@@ -1,34 +1,37 @@
 import React from 'react';
 import { boardTiles } from '../../data/boardTiles';
 import { Tile } from './Tile';
-import { PlayerToken } from './PlayerToken';
 import { Dice } from '../Dice/Dice';
 import { TileNotification } from '../HUD/TileNotification';
 import { useGameStore } from '../../store/gameStore';
-import { Trophy, Target, Dices } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Dices, Shield, Crown } from 'lucide-react';
+import { motion } from 'framer-motion';
 
-interface BoardProps {
-  currentPosition: number;
-}
+export const Board: React.FC = () => {
+  const { players, currentPlayerIndex, isRolling, isMoving, rollDice } = useGameStore();
 
-export const Board: React.FC<BoardProps> = ({ currentPosition }) => {
-  const currentTile = boardTiles[currentPosition] || boardTiles[0];
-  const { cups, remainingTurns, isRolling, isMoving, rollDice, playerName } = useGameStore();
-
-  const isDisabled = isRolling || isMoving || remainingTurns <= 0;
+  const curPlayer = players[currentPlayerIndex] || players[0];
+  const isDisabled = isRolling || isMoving || (curPlayer && curPlayer.remainingTurns <= 0);
 
   return (
     <div className="flex flex-col items-start gap-2 w-full max-w-[900px]">
-      {/* 1. WELCOME MESSAGE OUTSIDE THE BOARD (Top-Left aligned, Large Font) */}
+      {/* 1. TOP TURN BANNER */}
       <div className="w-full flex items-center justify-between px-2">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl sm:text-3xl font-black text-amber-300 drop-shadow-md tracking-wide">
-            Welcome {playerName || 'Player'}!
-          </span>
+        <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-2 px-4 py-1.5 rounded-2xl text-white font-black text-lg sm:text-2xl shadow-lg border-2 border-white/40"
+            style={{ backgroundColor: curPlayer?.color || '#3b82f6' }}
+          >
+            {curPlayer?.avatar === 'superhero' ? (
+              <Shield className="w-6 h-6" />
+            ) : (
+              <Crown className="w-6 h-6" />
+            )}
+            <span>{curPlayer ? `${curPlayer.name}'s Turn` : "Current Turn"}</span>
+          </div>
         </div>
 
-        {/* Floating Action Notification Popup Outside Board */}
+        {/* Floating Action Notification Popup */}
         <div className="ml-auto z-30">
           <TileNotification />
         </div>
@@ -42,43 +45,66 @@ export const Board: React.FC<BoardProps> = ({ currentPosition }) => {
             <Tile
               key={tile.id}
               tile={tile}
-              isCurrent={tile.pathIndex === currentPosition}
+              isCurrent={curPlayer && tile.pathIndex === curPlayer.position}
             />
           ))}
 
-          {/* Player Token */}
-          <PlayerToken row={currentTile.row} col={currentTile.col} />
+          {/* Player Tokens grouped by tile grid cells */}
+          {boardTiles.map((tile) => {
+            const tilePlayers = players.filter((p) => p.position === tile.pathIndex);
+            if (tilePlayers.length === 0) return null;
+
+            return (
+              <div
+                key={`tokens-cell-${tile.id}`}
+                style={{ gridRow: `${tile.row}`, gridColumn: `${tile.col}` }}
+                className="z-20 flex flex-wrap items-start justify-end gap-0.5 p-1 pointer-events-none overflow-hidden"
+              >
+                {tilePlayers.map((p) => {
+                  const pIdx = players.findIndex((pl) => pl.id === p.id);
+                  const isCurrent = pIdx === currentPlayerIndex;
+                  return (
+                    <motion.div
+                      key={p.id}
+                      initial={false}
+                      animate={{ scale: isCurrent ? [1, 1.15, 1] : 1 }}
+                      transition={{
+                        type: 'spring',
+                        stiffness: 350,
+                        damping: 25,
+                        repeat: isCurrent ? Infinity : 0,
+                        repeatDelay: 1,
+                      }}
+                      className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-white sm:border-2 shadow-md flex items-center justify-center text-white font-black transition-all ${
+                        isCurrent
+                          ? 'ring-2 sm:ring-3 ring-yellow-300 ring-offset-1 ring-offset-slate-900 z-30 scale-110 shadow-[0_0_10px_rgba(250,204,21,0.9)]'
+                          : 'opacity-90'
+                      }`}
+                      style={{ backgroundColor: p.color }}
+                      title={`${p.name} (P${pIdx + 1})`}
+                    >
+                      {p.avatar === 'superhero' ? (
+                        <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      ) : (
+                        <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            );
+          })}
 
           {/* Center Panel (Grid area: cols 2..9, rows 2..5) */}
-          <div 
+          <div
             style={{ gridColumn: '2 / 10', gridRow: '2 / 6' }}
             className="p-2 sm:p-4 flex flex-col justify-between items-center bg-slate-900/95 rounded-2xl border-2 border-slate-700/80 shadow-inner overflow-hidden z-0 text-center relative"
           >
-            {/* Top Stats (Cups & Turns) */}
-            <div className="w-full flex items-center justify-center gap-3 sm:gap-4 bg-slate-800/90 p-1.5 sm:p-2 rounded-xl border border-slate-700">
-              <div className="flex items-center gap-1.5 bg-amber-500/20 px-3 py-1 rounded-lg border border-amber-500/40">
-                <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 shrink-0" />
-                <span className="text-xs sm:text-sm font-bold text-amber-200 uppercase">Cups:</span>
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={cups}
-                    initial={{ scale: 1.3, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.8, opacity: 0 }}
-                    className="text-sm sm:text-lg font-black text-amber-300 drop-shadow"
-                  >
-                    {cups}
-                  </motion.span>
-                </AnimatePresence>
-              </div>
-
-              <div className="flex items-center gap-1.5 bg-cyan-500/20 px-3 py-1 rounded-lg border border-cyan-500/40">
-                <Target className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 shrink-0" />
-                <span className="text-xs sm:text-sm font-bold text-cyan-200 uppercase">Turns:</span>
-                <span className="text-sm sm:text-lg font-black text-cyan-300 drop-shadow">
-                  {remainingTurns}
-                </span>
-              </div>
+            {/* Center Header */}
+            <div className="w-full flex items-center justify-center bg-slate-800/90 py-1.5 px-3 rounded-xl border border-slate-700">
+              <span className="text-xs sm:text-sm font-extrabold text-amber-300 uppercase tracking-wider">
+                🏆 Cup Game Multiplayer 🏆
+              </span>
             </div>
 
             {/* Middle Center: 3D Dice Showcase */}
@@ -91,7 +117,7 @@ export const Board: React.FC<BoardProps> = ({ currentPosition }) => {
               <button
                 onClick={rollDice}
                 disabled={isDisabled}
-                className={`w-full py-2 sm:py-2.5 px-4 rounded-xl border-2 sm:border-3 border-white font-black text-xs sm:text-base shadow-lg flex items-center justify-center gap-2 transition-all ${
+                className={`w-full py-2 sm:py-2.5 px-4 rounded-xl border-2 sm:border-3 border-white font-black text-xs sm:text-base shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   isDisabled
                     ? 'bg-slate-700 text-slate-400 border-slate-500 shadow-none opacity-60 cursor-not-allowed'
                     : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 shadow-amber-500/40 hover:brightness-110 active:translate-y-0.5'
