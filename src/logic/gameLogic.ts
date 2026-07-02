@@ -1,4 +1,5 @@
 import { BoardTile, Player } from '../types/game';
+import { boardTiles } from '../data/boardTiles';
 
 export const TOTAL_BOARD_TILES = 28;
 
@@ -168,4 +169,69 @@ export function calculateRankings(players: Player[]): GameResult {
     isTie,
     rankings,
   };
+}
+
+/**
+ * Calculates the best dice roll (1-6) for a player based on simulated tile outcomes.
+ */
+export function getBestDiceRoll(player: Player, tiles: BoardTile[] = boardTiles): number {
+  const currentPos = player.position;
+
+  interface Candidate {
+    dice: number;
+    cupGain: number;
+    rawDelta: number;
+    finalPos: number;
+    forwardMovement: number;
+  }
+
+  const candidates: Candidate[] = [];
+
+  for (let d = 1; d <= 6; d++) {
+    const firstLandedPos = getNextPosition(currentPos, d);
+    const firstTile = tiles[firstLandedPos];
+    const firstEffect = resolveTileEffect(firstTile, player.name, false);
+
+    let finalPos = firstLandedPos;
+    let rawDelta = firstEffect.cupsDelta;
+
+    if (firstEffect.newPosition !== undefined) {
+      finalPos = firstEffect.newPosition;
+      const secondTile = tiles[finalPos];
+      const secondEffect = resolveTileEffect(secondTile, player.name, true);
+      rawDelta = secondEffect.cupsDelta;
+    }
+
+    const finalCups = applyCupChange(player.cups, rawDelta);
+    const cupGain = finalCups - player.cups;
+    const forwardMovement = (finalPos - currentPos + TOTAL_BOARD_TILES) % TOTAL_BOARD_TILES;
+
+    candidates.push({
+      dice: d,
+      cupGain,
+      rawDelta,
+      finalPos,
+      forwardMovement,
+    });
+  }
+
+  // Sort candidates based on the tie-breaker rules:
+  // 1. Higher cup gain (descending)
+  // 2. Avoid losing cups / rawDelta (descending)
+  // 3. Larger forward movement (descending)
+  // 4. Smaller dice number (ascending)
+  candidates.sort((a, b) => {
+    if (b.cupGain !== a.cupGain) {
+      return b.cupGain - a.cupGain;
+    }
+    if (b.rawDelta !== a.rawDelta) {
+      return b.rawDelta - a.rawDelta;
+    }
+    if (b.forwardMovement !== a.forwardMovement) {
+      return b.forwardMovement - a.forwardMovement;
+    }
+    return a.dice - b.dice;
+  });
+
+  return candidates[0].dice;
 }

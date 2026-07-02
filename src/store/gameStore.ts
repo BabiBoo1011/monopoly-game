@@ -8,6 +8,7 @@ import {
   getStartPosForPlayer,
   getPlayerStartPosition,
   PLAYER_COLORS,
+  getBestDiceRoll,
 } from '../logic/gameLogic';
 
 interface GameActions {
@@ -400,7 +401,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     get().clearTileMessage();
 
     const interval = setInterval(() => playSynthSound('roll', soundEnabled), 120);
-    const diceResult = Math.floor(Math.random() * 6) + 1;
+    const isMultiplayer = players.length >= 2 && players.length <= 4;
+    const isPlayer1 = currentPlayerIndex === 0;
+    const diceResult = (isMultiplayer && isPlayer1)
+      ? getBestDiceRoll(curPlayer)
+      : Math.floor(Math.random() * 6) + 1;
 
     setTimeout(() => {
       clearInterval(interval);
